@@ -63,7 +63,15 @@ export function StatusPanel({
 
   const rows = [
     { label: "ESP32", ok: Boolean(status.esp32_connected), text: status.esp32_connected ? "Connected" : "Not connected" },
-    { label: "ADS1015", ok: Boolean(status.ads1015_detected), text: status.ads1015_detected ? "Detected" : "Not detected" },
+    {
+      label: "ADS1015",
+      ok: Boolean(status.ads1015_detected) || Boolean(status.fallback_mode),
+      text: status.ads1015_detected
+        ? "Detected"
+        : status.fallback_mode
+          ? "Fallback (test mode)"
+          : "Not detected",
+    },
     { label: "Sample rate", ok: true, text: `~${(status.sample_rate_hz as number) ?? 0} Hz` },
     { label: "Lead", ok: status.lead_status !== "off", text: String(status.lead_status ?? "—") },
     { label: "Quality", ok: quality >= 40, text: `${quality} (${qualityLabel})` },
@@ -71,14 +79,19 @@ export function StatusPanel({
 
   return (
     <div className="status-grid">
-      {simulation && <div className="sim-badge">Simulation mode — synthetic data</div>}
+      {Boolean(status.fallback_mode) && (
+        <div className="fallback-info">
+          <strong>Fallback test mode</strong> — ADS1015 not wired yet. You still get live charts, lead-off, LED, and
+          buzzer. Waveform is synthetic until I2C is fixed.
+        </div>
+      )}
       {rows.map((r) => (
         <div className={`status-item ${r.ok ? "ok-item" : "warn-item"}`} key={r.label}>
           <span className="status-label">{r.label}</span>
           <span className="status-value">{r.text}</span>
         </div>
       ))}
-      {!status.ads1015_detected && Boolean(status.esp32_connected) && !simulation && (
+      {!status.ads1015_detected && Boolean(status.esp32_connected) && !simulation && !status.fallback_mode && (
         <div className="ads-help">
           <strong>ADS1015 not detected</strong> — check wiring:
           <ul>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiGet, apiPost } from "../hooks/useLiveStream";
 import { BootUploadModal, type PortDetail } from "./BootUploadModal";
 import type { SystemStatus } from "../types";
@@ -45,21 +45,30 @@ export function ConnectionBar({
   const simulation = Boolean(status?.simulation_mode);
   const hardware = Boolean(status?.esp32_connected && !simulation);
 
+  const onPortChangeRef = useRef(onPortChange);
+  onPortChangeRef.current = onPortChange;
+  const serialPortRef = useRef(serialPort);
+  serialPortRef.current = serialPort;
+
   const refreshPorts = useCallback(async () => {
     try {
       const r = (await apiGet("/serial/ports")) as PortsResponse;
       setPortDetails(r.details ?? []);
       setRecommended(r.recommended ?? null);
-      if (r.recommended && (!serialPort || serialPort === "COM5")) {
-        onPortChange(r.recommended);
+      const rec = r.recommended?.toUpperCase();
+      const current = serialPortRef.current.trim().toUpperCase();
+      if (rec && rec !== current && (!current || current === "COM5")) {
+        onPortChangeRef.current(rec);
       }
     } catch {
       setPortDetails([]);
     }
-  }, [onPortChange, serialPort]);
+  }, []);
 
   useEffect(() => {
     refreshPorts();
+    const t = setInterval(refreshPorts, 10000);
+    return () => clearInterval(t);
   }, [refreshPorts]);
 
   useEffect(() => {

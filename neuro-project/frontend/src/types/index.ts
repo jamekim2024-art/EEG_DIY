@@ -15,6 +15,7 @@ export type LivePayload = {
 export type SystemStatus = {
   esp32_connected: boolean;
   ads1015_detected: boolean;
+  fallback_mode?: boolean;
   sample_rate_hz: number;
   lead_status: string;
   buzzer_active?: boolean;

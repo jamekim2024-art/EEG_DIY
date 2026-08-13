@@ -23,6 +23,7 @@ class SerialStats:
     last_device_ts: int = 0
     connected: bool = False
     ads_detected: bool = False
+    fallback_mode: bool = False
     effective_hz: float = 0.0
     dropped_estimate: int = 0
 
@@ -108,12 +109,14 @@ class SerialADS1015Source(BaseSignalSource):
                     continue
                 line = raw.decode("utf-8", errors="replace").strip()
                 if line.startswith("#"):
-                    if "ADS1015 detected" in line:
+                    if "ADS1015 detected" in line or "switching to real ADC" in line:
                         self.stats.ads_detected = True
-                    if "ADS1015 still missing" in line or "ADS1015 not found" in line:
+                        self.stats.fallback_mode = False
+                    if "mode=fallback_no_ads" in line or "FALLBACK:" in line:
+                        self.stats.fallback_mode = True
                         self.stats.ads_detected = False
-                    if "I2C device at 0x48" in line or "I2C device at 0x49" in line:
-                        self.stats.ads_detected = True
+                    if "fallback=1" in line:
+                        self.stats.fallback_mode = True
                     continue
                 sample = parse_line(line)
                 if sample is None:

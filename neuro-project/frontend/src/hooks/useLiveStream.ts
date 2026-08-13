@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LivePayload, SystemStatus } from "../types";
-import { API_BASE, WS_URL, apiUrl, fetchErrorMessage } from "./apiClient";
+import { API_BASE, WS_URL, apiDisplayLabel, apiUrl, fetchErrorMessage, fetchWithTimeout } from "./apiClient";
 
 export function useLiveStream() {
   const [status, setStatus] = useState<SystemStatus | null>(null);
@@ -11,7 +11,7 @@ export function useLiveStream() {
 
   const checkBackend = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl("/status"), { signal: AbortSignal.timeout(3000) });
+      const res = await fetchWithTimeout(apiUrl("/status"), {}, 5000);
       setBackendOnline(res.ok);
       return res.ok;
     } catch {
@@ -55,7 +55,7 @@ export function useLiveStream() {
 
   const hasSignal = Boolean(data.waveform?.raw?.length || data.waveform?.filtered?.length);
 
-  return { status, data, wsConnected: connected, hasSignal, backendOnline, checkBackend, apiBase: API_BASE };
+  return { status, data, wsConnected: connected, hasSignal, backendOnline, checkBackend, apiBase: apiDisplayLabel() };
 }
 
 export async function apiPost(path: string, body?: unknown, timeoutMs = 30000) {

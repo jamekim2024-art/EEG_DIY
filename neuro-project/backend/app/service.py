@@ -113,7 +113,8 @@ class NeuroRuntime:
         stats = getattr(src, "stats", None)
         return {
             "esp32_connected": connected and not self.demo_mode,
-            "ads1015_detected": ads,
+            "ads1015_detected": ads and not getattr(stats, "fallback_mode", False),
+            "fallback_mode": bool(getattr(stats, "fallback_mode", False)) and connected and not self.demo_mode,
             "sample_rate_hz": round(eff, 1),
             "lead_status": "disconnected" if self.buffer.last_lead_off() else "connected",
             "buzzer_active": self.buffer.last_lead_off() and connected and not self.demo_mode,

@@ -67,12 +67,14 @@ export function DashboardPage() {
 
       {backendOnline === false && (
         <div className="backend-offline-banner">
-          <strong>Backend offline</strong> — action buttons will fail. In a terminal run:{" "}
+          <strong>Backend offline</strong> — start the server, then refresh this page:
           <code>cd neuro-project && npm start</code>
           <button type="button" className="btn secondary" onClick={() => checkBackend()}>
             Retry connection
           </button>
-          <small className="hint">Expected API: {apiBase}</small>
+          <small className="hint">
+            Open dashboard at <strong>http://localhost:5173</strong> (not the 8000 URL). API: {apiBase}
+          </small>
         </div>
       )}
 
