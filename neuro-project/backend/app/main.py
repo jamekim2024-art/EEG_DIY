@@ -38,16 +38,23 @@ async def unhandled_exception_handler(_request: Request, exc: Exception):
 
 @app.on_event("startup")
 def on_startup() -> None:
-    """Auto-connect when launched via run_all (no ESP32 upload)."""
+    """Auto-connect in background so the API listens immediately."""
+    import threading
+
     mode = os.environ.get("NEURO_AUTO_CONNECT", "").lower()
     port = os.environ.get("NEURO_SERIAL_PORT", config.serial_port)
-    if mode == "serial":
-        try:
-            runtime.connect_serial(port)
-        except Exception:
+
+    def _connect() -> None:
+        if mode == "serial":
+            try:
+                runtime.connect_serial(port)
+            except Exception:
+                runtime.connect_demo("alpha")
+        elif mode == "demo":
             runtime.connect_demo("alpha")
-    elif mode == "demo":
-        runtime.connect_demo("alpha")
+
+    if mode in ("serial", "demo"):
+        threading.Thread(target=_connect, daemon=True, name="auto-connect").start()
 
 
 @app.get("/")

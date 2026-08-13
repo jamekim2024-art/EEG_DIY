@@ -13,29 +13,62 @@ const API_PORT = Number(process.env.NEURO_API_PORT || 8000);
 const port = process.env.NEURO_SERIAL_PORT || "COM5";
 const env = {
   ...process.env,
+  PYTHONUNBUFFERED: "1",
   NEURO_AUTO_CONNECT: process.env.NEURO_AUTO_CONNECT || "serial",
   NEURO_SERIAL_PORT: port,
 };
 
 const children = [];
+let backendChild = null;
+
+function resolvePython() {
+  if (process.env.NEURO_PYTHON) return process.env.NEURO_PYTHON;
+  const candidates = isWin ? ["py -3", "python", "python3"] : ["python3", "python"];
+  for (const cmd of candidates) {
+    try {
+      const out = execSync(`${cmd} -c "import sys; print(sys.executable)"`, {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        shell: true,
+      }).trim();
+      if (out) return out;
+    } catch {
+      /* try next */
+    }
+  }
+  return isWin ? "py" : "python3";
+}
+
+const PYTHON = resolvePython();
 
 function run(name, command, args, cwd = root) {
   const child = spawn(command, args, {
     cwd,
     env,
     stdio: "inherit",
-    shell: isWin,
+    shell: false,
+    windowsHide: true,
   });
   child.on("exit", (code) => {
     console.log(`[${name}] stopped (exit ${code ?? "?"})`);
+  });
+  child.on("error", (err) => {
+    console.error(`[${name}] failed to start: ${err.message}`);
   });
   children.push(child);
   return child;
 }
 
+function runNpmDev(cwd) {
+  if (isWin) {
+    return run("frontend", "cmd", ["/c", "npm", "run", "dev"], cwd);
+  }
+  return run("frontend", "npm", ["run", "dev"], cwd);
+}
+
 function openBrowser(url) {
   if (isWin) {
-    spawn("cmd", ["/c", "start", "", url], { stdio: "ignore", shell: true });
+    spawn("cmd", ["/c", "start", "", url], { stdio: "ignore", shell: false });
   } else if (os.platform() === "darwin") {
     spawn("open", [url], { stdio: "ignore" });
   } else {
@@ -118,54 +151,74 @@ async function freePort(portNum, { graceful = false } = {}) {
   process.exit(1);
 }
 
-async function freeApiPort(portNum) {
-  await freePort(portNum, { graceful: true });
+function pingBackend(portNum) {
+  return new Promise((resolve) => {
+    const req = http.get(
+      { hostname: "127.0.0.1", port: portNum, path: "/api/status", timeout: 3000 },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode === 200);
+      }
+    );
+    req.on("error", () => resolve(false));
+    req.on("timeout", () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
 }
 
-async function waitForBackend(maxMs = 30000) {
+async function waitForBackend(child, maxMs = 90000) {
   const start = Date.now();
+  let dots = 0;
   while (Date.now() - start < maxMs) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${API_PORT}/api/status`);
-      if (res.ok) return true;
-    } catch {
-      /* retry */
+    if (child && child.exitCode !== null) {
+      console.error(`\n[backend] Process exited early (code ${child.exitCode}).`);
+      return false;
     }
-    await new Promise((r) => setTimeout(r, 400));
+    if (await pingBackend(API_PORT)) return true;
+    dots = (dots + 1) % 4;
+    process.stdout.write(`\r[start] Waiting for backend${".".repeat(dots)}   `);
+    await new Promise((r) => setTimeout(r, 600));
   }
+  process.stdout.write("\n");
   return false;
 }
 
 async function main() {
   console.log("=== Neuro-project: npm start ===");
   console.log(`Serial port: ${port} (set NEURO_SERIAL_PORT to override)`);
+  console.log(`Python: ${PYTHON}`);
   console.log("Educational prototype — NOT a medical device.\n");
 
-  await freeApiPort(API_PORT);
+  await freePort(API_PORT, { graceful: true });
 
-  run("backend", "python", [
-    "-m",
-    "uvicorn",
-    "backend.app.main:app",
-    "--host",
-    "127.0.0.1",
-    "--port",
-    String(API_PORT),
-  ]);
+  console.log("[start] Launching backend…");
+  backendChild = run(
+    "backend",
+    PYTHON,
+    ["-m", "uvicorn", "backend.app.main:app", "--host", "127.0.0.1", "--port", String(API_PORT)],
+    root
+  );
 
-  const ok = await waitForBackend();
+  const ok = await waitForBackend(backendChild);
   if (!ok) {
-    console.error(`\n[backend] Not responding on http://127.0.0.1:${API_PORT} — check Python errors above.\n`);
+    console.error(
+      `\n[backend] Not responding on http://127.0.0.1:${API_PORT}.\n` +
+        "  • Check Python errors above\n" +
+        "  • Try: python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000\n"
+    );
     shutdown(1);
     return;
   }
+  console.log("\n[start] Backend ready.");
 
   await freePort(5173);
 
-  run("frontend", "npm", ["run", "dev"], path.join(root, "frontend"));
+  runNpmDev(path.join(root, "frontend"));
 
   if (process.env.NEURO_PLOTTER === "1") {
-    run("plotter", "python", ["tools/serial_plotter.py", "--port", port]);
+    run("plotter", PYTHON, [path.join("tools", "serial_plotter.py"), "--port", port]);
   } else {
     console.log("Serial plotter skipped (set NEURO_PLOTTER=1 to enable).\n");
   }
