@@ -1,0 +1,10 @@
+.pio/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/raw/*.csv
+data/raw/*.json
+data/models/*.joblib
+frontend/node_modules/
+frontend/dist/
+.env

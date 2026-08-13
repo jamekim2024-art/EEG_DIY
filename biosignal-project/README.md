@@ -1,10 +1,10 @@
-# Biosignal Project
+# Biosignal Project (ESP32-only)
 
-Dual-firmware educational biosignal acquisition prototype.
+Standalone educational biosignal acquisition on **ESP32-WROOM-32**.
 
-- `esp32/` — ADS1015 sampling + lead-off + CSV serial stream (~250 Hz)
-- `mega/` — 8x2 LCD + LED + buzzer status panel
+- `esp32/` — ADS1015 sampling, lead-off, LED/buzzer, CSV serial (~250 Hz)
 - `tools/i2c_scan/` — optional I2C wiring diagnostic
-- `docs/` — hardware notes
+- `docs/WIRING.md` — **current one-to-one wiring** (no Mega, no LCD)
+- `mega/` — legacy (unused; Mega + LCD removed from the design)
 
-See `docs/HARDWARE.md` for pin map and safety notes.
+See `docs/WIRING.md` and `docs/HARDWARE.md`.

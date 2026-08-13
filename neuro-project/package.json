@@ -1,0 +1,11 @@
+{
+  "name": "neuro-project",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Educational biosignal stack — not a medical device",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "upload": "python scripts/upload_firmware.py",
+    "plotter": "python tools/serial_plotter.py --port COM5"
+  }
+}
