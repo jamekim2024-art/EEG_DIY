@@ -1,247 +1,98 @@
 #include <Wire.h>
 #include <Adafruit_ADS1X15.h>
-#include <LiquidCrystal.h>
 
-// -------------------------------
-// ADS1015
-// -------------------------------
+/*
+  ESP32 EEG acquisition board.
+
+  Handles:
+    - AD8232 lead-off detection (LO+, LO-)
+    - ADS1015 I2C ADC (reads conditioned AD8232 output)
+    - USB serial CSV logging
+    - Status packets to Arduino Mega over Serial2
+
+  Display, LED, and buzzer run on the Mega so the LCD can use 5 V
+  instead of overloading the ESP32 3.3 V regulator.
+*/
 
 Adafruit_ADS1015 ads;
 
-// I2C
 #define SDA_PIN 21
 #define SCL_PIN 22
-
-// -------------------------------
-// AD8232 lead detection
-// -------------------------------
 
 #define LO_PLUS  32
 #define LO_MINUS 34
 
-// -------------------------------
-// Output indicators
-// -------------------------------
+#define MEGA_TX 17
+#define MEGA_RX 16
 
-#define LED_PIN    2
-#define BUZZER_PIN 4
-
-// -------------------------------
-// LCD
-// RS, E, D4, D5, D6, D7
-// -------------------------------
-
-LiquidCrystal lcd(
-  13,
-  14,
-  27,
-  26,
-  25,
-  33
-);
-
-// -------------------------------
-// Sampling
-// -------------------------------
+#define MEGA_BAUD 115200
 
 const int SAMPLE_RATE = 250;
-
-const unsigned long SAMPLE_INTERVAL =
-    1000000UL / SAMPLE_RATE;
+const unsigned long SAMPLE_INTERVAL = 1000000UL / SAMPLE_RATE;
 
 unsigned long lastSample = 0;
-unsigned long lastLCDUpdate = 0;
-
+unsigned long lastMegaUpdate = 0;
 long sampleCounter = 0;
 
 void setup() {
-
   Serial.begin(115200);
+  Serial2.begin(MEGA_BAUD, SERIAL_8N1, MEGA_RX, MEGA_TX);
 
   delay(1000);
-
-  // -------------------------
-  // GPIO
-  // -------------------------
 
   pinMode(LO_PLUS, INPUT);
   pinMode(LO_MINUS, INPUT);
 
-  pinMode(LED_PIN, OUTPUT);
-  pinMode(BUZZER_PIN, OUTPUT);
-
-  digitalWrite(LED_PIN, LOW);
-  digitalWrite(BUZZER_PIN, LOW);
-
-  // -------------------------
-  // LCD
-  // -------------------------
-
-  lcd.begin(8, 2);
-
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print("NEURO V1");
-
-  lcd.setCursor(0, 1);
-  lcd.print("START...");
-
-  // -------------------------
-  // I2C
-  // -------------------------
-
   Wire.begin(SDA_PIN, SCL_PIN);
 
-  // -------------------------
-  // ADS1015
-  // -------------------------
-
   if (!ads.begin()) {
-
-    lcd.clear();
-
-    lcd.setCursor(0, 0);
-    lcd.print("ADC ERR");
-
     Serial.println("ADS1015 NOT FOUND");
-
     while (true) {
-
-      digitalWrite(LED_PIN, HIGH);
-      delay(200);
-
-      digitalWrite(LED_PIN, LOW);
-      delay(200);
+      Serial2.println("E,ADC");
+      delay(500);
     }
   }
 
-  /*
-    Start with GAIN_ONE.
-
-    This provides plenty of range
-    for the conditioned AD8232 output.
-  */
-
   ads.setGain(GAIN_ONE);
 
-  // -------------------------
-  // Ready
-  // -------------------------
-
-  lcd.clear();
-
-  lcd.setCursor(0, 0);
-  lcd.print("READY");
-
-  digitalWrite(LED_PIN, HIGH);
-
-  Serial.println(
-    "time_us,raw,voltage,lead_off"
-  );
+  Serial.println("time_us,raw,voltage,lead_off");
+  Serial2.println("R,READY");
 
   lastSample = micros();
 }
 
 void loop() {
-
   unsigned long now = micros();
 
-  // --------------------------------
-  // Read approximately 250 Hz
-  // --------------------------------
-
-  if (
-    now - lastSample >= SAMPLE_INTERVAL
-  ) {
-
+  if (now - lastSample >= SAMPLE_INTERVAL) {
     lastSample += SAMPLE_INTERVAL;
-
-    // -----------------------------
-    // Electrode connection
-    // -----------------------------
 
     bool leadOff =
       digitalRead(LO_PLUS) ||
       digitalRead(LO_MINUS);
 
-    // -----------------------------
-    // Read ADC
-    // -----------------------------
-
-    int16_t raw =
-      ads.readADC_SingleEnded(0);
-
-    float voltage =
-      ads.computeVolts(raw);
+    int16_t raw = ads.readADC_SingleEnded(0);
+    float voltage = ads.computeVolts(raw);
 
     sampleCounter++;
 
-    // -----------------------------
-    // Serial CSV
-    // -----------------------------
-
     Serial.print(now);
-
     Serial.print(",");
-
     Serial.print(raw);
-
     Serial.print(",");
-
     Serial.print(voltage, 6);
-
     Serial.print(",");
+    Serial.println(leadOff ? 1 : 0);
 
-    Serial.println(
-      leadOff ? 1 : 0
-    );
+    if (millis() - lastMegaUpdate >= 250) {
+      lastMegaUpdate = millis();
 
-    // -----------------------------
-    // Status outputs
-    // -----------------------------
-
-    if (leadOff) {
-
-      digitalWrite(LED_PIN, LOW);
-      digitalWrite(BUZZER_PIN, HIGH);
-
-    } else {
-
-      digitalWrite(LED_PIN, HIGH);
-      digitalWrite(BUZZER_PIN, LOW);
-    }
-
-    // -----------------------------
-    // LCD every 250 ms
-    // -----------------------------
-
-    if (
-      millis() - lastLCDUpdate >= 250
-    ) {
-
-      lastLCDUpdate = millis();
-
-      lcd.clear();
-
-      if (leadOff) {
-
-        lcd.setCursor(0, 0);
-        lcd.print("LEAD OFF");
-
-        lcd.setCursor(0, 1);
-        lcd.print("CHECK");
-
-      } else {
-
-        lcd.setCursor(0, 0);
-
-        lcd.print("V:");
-        lcd.print(voltage, 2);
-
-        lcd.setCursor(0, 1);
-        lcd.print("RUN ");
-        lcd.print(sampleCounter % 10000);
-      }
+      Serial2.print("S,");
+      Serial2.print(leadOff ? 1 : 0);
+      Serial2.print(",");
+      Serial2.print(voltage, 2);
+      Serial2.print(",");
+      Serial2.println(sampleCounter % 10000);
     }
   }
 }
